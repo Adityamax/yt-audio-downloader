@@ -1,42 +1,43 @@
-from flask import Flask, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import yt_dlp
 import os
 
 app = Flask(__name__)
 
-@app.route("/download", methods=["GET"])
+# --- Home page (for browsers) ---
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+# --- API: YouTube download ---
+@app.route('/download', methods=['POST'])
 def download():
-    video_url = request.args.get("url")
+    video_url = request.form.get('url')
     if not video_url:
         return jsonify({"error": "No URL provided"}), 400
 
-    # Choose format
-    option = request.args.get("format", "mp3")
-
-    # Download options
-    if option == "mp3":
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-        }
-    else:
-        ydl_opts = {'format': 'best', 'outtmpl': 'downloads/%(title)s.%(ext)s'}
-
     os.makedirs("downloads", exist_ok=True)
+    output_file = "downloads/audio.mp3"
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=False)
-        return jsonify({
-            "title": info.get("title"),
-            "url": info.get("url"),
-            "format": option
-        })
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': output_file,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'quiet': True
+    }
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
 
+        return send_file(output_file, as_attachment=True)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
