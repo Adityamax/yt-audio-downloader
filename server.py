@@ -1,43 +1,132 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, render_template_string
 import yt_dlp
 import os
 
 app = Flask(__name__)
 
-# --- Home page (for browsers) ---
+# HTML page
+HTML_PAGE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Audio Downloader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #0e0e0e;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        input, button {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+        }
+        input {
+            width: 300px;
+        }
+        button {
+            margin-top: 10px;
+            background: #1db954;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #18a34a;
+        }
+    </style>
+</head>
+<body>
+    <h2>YouTube Audio Downloader</h2>
+    <input id="url" type="text" placeholder="Paste YouTube link here" />
+    <button onclick="downloadAudio()">Download Audio</button>
+    <p id="status"></p>
+
+    <script>
+        async function downloadAudio() {
+            const url = document.getElementById('url').value.trim();
+            const status = document.getElementById('status');
+            if (!url) return status.innerText = 'Please enter a URL.';
+
+            status.innerText = 'Downloading... please wait.';
+            const res = await fetch('/download', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url })
+            });
+
+            const data = await res.json();
+            if (data.error) {
+                status.innerText = 'Error: ' + data.error;
+            } else {
+                status.innerText = 'Download complete!';
+                window.location.href = '/get_audio';
+            }
+        }
+    </script>
+</body>
+</html>
+"""
+
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template_string(HTML_PAGE)
 
-# --- API: YouTube download ---
 @app.route('/download', methods=['POST'])
-def download():
-    video_url = request.form.get('url')
-    if not video_url:
-        return jsonify({"error": "No URL provided"}), 400
-
-    os.makedirs("downloads", exist_ok=True)
-    output_file = "downloads/audio.mp3"
-
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': output_file,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'quiet': True
-    }
-
+def download_audio():
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([video_url])
+        data = request.get_json()
+        url = data.get('url')
 
-        return send_file(output_file, as_attachment=True)
+        if not url:
+            return jsonify({"error": "No URL provided"}), 400
+
+        # Write the YouTube cookies into a temporary file
+        cookie_data = os.getenv("YT_COOKIES", "")
+        if not cookie_data.strip():
+            return jsonify({"error": "No YouTube cookies found in environment"}), 500
+
+        with open('/tmp/cookies.txt', 'w') as f:
+            f.write(cookie_data)
+
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': '/tmp/audio.%(ext)s',
+            'cookiefile': '/tmp/cookies.txt',
+            'quiet': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        return jsonify({"success": True})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/get_audio')
+def get_audio():
+    try:
+        for ext in ['mp3', 'm4a', 'webm']:
+            file_path = f'/tmp/audio.{ext}'
+            if os.path.exists(file_path):
+                return send_file(file_path, as_attachment=True)
+        return jsonify({"error": "Audio file not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
