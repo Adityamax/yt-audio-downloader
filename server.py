@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 
-# HTML page
+# === Simple HTML UI ===
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -15,8 +15,8 @@ HTML_PAGE = """
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #0e0e0e;
-            color: #fff;
+            background-color: #0d1117;
+            color: #f0f6fc;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -25,36 +25,48 @@ HTML_PAGE = """
         }
         input, button {
             padding: 10px;
-            border-radius: 5px;
+            border-radius: 6px;
             border: none;
+            font-size: 15px;
         }
         input {
-            width: 300px;
+            width: 320px;
+            margin-bottom: 10px;
         }
         button {
-            margin-top: 10px;
-            background: #1db954;
+            background: #238636;
             color: white;
             cursor: pointer;
+            font-weight: bold;
         }
         button:hover {
-            background: #18a34a;
+            background: #2ea043;
+        }
+        #downloadBtn {
+            display: none;
+            background: #1f6feb;
+        }
+        #downloadBtn:hover {
+            background: #388bfd;
         }
     </style>
 </head>
 <body>
-    <h2>YouTube Audio Downloader</h2>
+    <h2>🎵 YouTube MP3 Downloader</h2>
     <input id="url" type="text" placeholder="Paste YouTube link here" />
-    <button onclick="downloadAudio()">Download Audio</button>
+    <button onclick="downloadAudio()">Convert to MP3</button>
+    <button id="downloadBtn" onclick="getFile()">Download MP3</button>
     <p id="status"></p>
 
     <script>
         async function downloadAudio() {
             const url = document.getElementById('url').value.trim();
             const status = document.getElementById('status');
-            if (!url) return status.innerText = 'Please enter a URL.';
+            const dlBtn = document.getElementById('downloadBtn');
+            dlBtn.style.display = 'none';
+            if (!url) return status.innerText = 'Please enter a YouTube link.';
 
-            status.innerText = 'Downloading... please wait.';
+            status.innerText = 'Converting... please wait ⏳';
             const res = await fetch('/download', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -63,11 +75,15 @@ HTML_PAGE = """
 
             const data = await res.json();
             if (data.error) {
-                status.innerText = 'Error: ' + data.error;
+                status.innerText = '❌ Error: ' + data.error;
             } else {
-                status.innerText = 'Download complete!';
-                window.location.href = '/get_audio';
+                status.innerText = '✅ Conversion complete!';
+                dlBtn.style.display = 'inline-block';
             }
+        }
+
+        function getFile() {
+            window.location.href = '/get_audio';
         }
     </script>
 </body>
@@ -78,6 +94,7 @@ HTML_PAGE = """
 def home():
     return render_template_string(HTML_PAGE)
 
+
 @app.route('/download', methods=['POST'])
 def download_audio():
     try:
@@ -87,7 +104,7 @@ def download_audio():
         if not url:
             return jsonify({"error": "No URL provided"}), 400
 
-        # Write the YouTube cookies into a temporary file
+        # Load cookies from environment variable
         cookie_data = os.getenv("YT_COOKIES", "")
         if not cookie_data.strip():
             return jsonify({"error": "No YouTube cookies found in environment"}), 500
