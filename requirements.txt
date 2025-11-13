@@ -1,4 +1,4 @@
-flask
-yt-dlp
-gunicorn
-
+Flask==3.0.3
+gunicorn==21.2.0
+yt-dlp==2025.1.6
+ffmpeg-python==0.2.0
