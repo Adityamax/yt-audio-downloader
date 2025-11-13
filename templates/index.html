@@ -1,14 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>YouTube MP3 Downloader</title>
+    <meta charset="UTF-8" />
+    <title>YouTube Downloader</title>
 </head>
 <body>
-  <h2>Download YouTube Audio</h2>
-  <form action="/download" method="post">
-    <input type="text" name="url" placeholder="Paste YouTube URL here" style="width:300px" required>
-    <button type="submit">Download</button>
-  </form>
+    <h1>Download YouTube Video or Audio</h1>
+    <form method="POST" action="/">
+        <input type="text" name="url" placeholder="Enter YouTube URL" style="width:300px;" required />
+        <select name="format">
+            <option value="mp3">MP3 (Audio)</option>
+            <option value="mp4">MP4 (Video)</option>
+        </select>
+        <button type="submit">Download</button>
+    </form>
+    {% if error %}
+    <p style="color:red;">Error: {{ error }}</p>
+    {% endif %}
 </body>
 </html>
