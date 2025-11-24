@@ -1,93 +1,83 @@
-from flask import Flask, request, render_template, send_file
+from flask import Flask, request, render_template_string, send_file
 import yt_dlp
 import os
 import tempfile
 import shutil
 from threading import Timer
-import base64
+import traceback
 
 app = Flask(__name__)
+
+HTML = '''
+<!doctype html>
+<title>YouTube Audio Downloader</title>
+<h2>YouTube Audio Downloader</h2>
+<form method=post>
+  <label for=url>YouTube URL:</label>
+  <input type=text id=url name=url size=50 required><br><br>
+  <label for=proxy>Proxy (optional, e.g. http://proxyserver:port):</label>
+  <input type=text id=proxy name=proxy size=50><br><br>
+  <input type=submit value=Download>
+</form>
+{% if error %}
+<p style="color:red;">Error: {{ error }}</p>
+{% endif %}
+'''
 
 def cleanup_dir(path):
     if os.path.exists(path):
         shutil.rmtree(path)
 
-@app.route("/", methods=["GET", "POST"])
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == "POST":
-        url = request.form.get("url")
-        format = request.form.get("format")
+    if request.method == 'POST':
+        url = request.form.get('url')
+        proxy = request.form.get('proxy', '').strip() or None
 
         if not url:
-            return render_template("index.html", error="Please enter a YouTube URL")
+            return render_template_string(HTML, error='Please enter a YouTube URL')
 
         temp_dir = tempfile.mkdtemp()
-        output_path = os.path.join(temp_dir, "%(title)s.%(ext)s")
+        output_path = os.path.join(temp_dir, '%(title)s.%(ext)s')
 
-        # ======================
-        #   COOKIES HANDLING
-        # ======================
-        cookies_b64 = os.getenv("YT_COOKIES_B64")
-        cookies_file_path = None
-
-        if cookies_b64:
-            try:
-                cookies_raw = base64.b64decode(cookies_b64).decode()
-                cookies_file = tempfile.NamedTemporaryFile(delete=False)
-                cookies_file.write(cookies_raw.encode())
-                cookies_file.flush()
-                cookies_file_path = cookies_file.name
-                cookies_file.close()
-            except Exception as ce:
-                return render_template("index.html", error="Cookie decode failed: " + str(ce))
-
-        # ======================
-        #   YT-DLP OPTIONS
-        # ======================
         ydl_opts = {
-            "outtmpl": output_path,
-            "format": "bestaudio/best" if format == "mp3" else "bestvideo+bestaudio/best",
-            "postprocessors": [],
-            "quiet": True,
-            "no_warnings": True,
+            'outtmpl': output_path,
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': True,
+            'no_warnings': True,
+            # Increase buffer to reduce worker timeout risks
+            'ratelimit': None,
+            'retries': 10,
+            'fragment_retries': 10,
+            'continuedl': True,
+            'noplaylist': True,
         }
 
-        if cookies_file_path:
-            ydl_opts["cookiefile"] = cookies_file_path
+        if proxy:
+            ydl_opts['proxy'] = proxy
 
-        if format == "mp3":
-            ydl_opts["postprocessors"] = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }]
-
-        # ======================
-        #   DOWNLOAD PROCESS
-        # ======================
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 filename = ydl.prepare_filename(info)
+                filename = os.path.splitext(filename)[0] + '.mp3'
 
-                if format == "mp3":
-                    filename = os.path.splitext(filename)[0] + ".mp3"
-
-            # Cleanup temp files later
+            # Schedule temp directory cleanup after 60 seconds
             Timer(60, cleanup_dir, args=[temp_dir]).start()
-            if cookies_file_path:
-                Timer(60, os.remove, args=[cookies_file_path]).start()
 
             return send_file(filename, as_attachment=True)
-
         except Exception as e:
+            print(traceback.format_exc())
             cleanup_dir(temp_dir)
-            if cookies_file_path and os.path.exists(cookies_file_path):
-                os.remove(cookies_file_path)
-            return render_template("index.html", error=str(e))
+            return render_template_string(HTML, error=str(e))
 
-    return render_template("index.html")
+    return render_template_string(HTML)
 
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+if __name__ == '__main__':
+    # Use 0.0.0.0 to be accessible externally
+    app.run(host='0.0.0.0', port=5000)
