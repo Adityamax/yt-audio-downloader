@@ -7,7 +7,6 @@ from flask import Flask, request, render_template_string, send_file
 
 app = Flask(__name__)
 
-# Proxy list from provided context (top 5 elite SOCKS5 proxies with IP:port)
 PROXIES = [
     "socks5://5.135.191.18:9100",
     "socks5://139.170.229.78:7080",
@@ -66,6 +65,7 @@ def index():
             'noplaylist': True,
             'retries': 10,
             'fragment_retries': 10,
+            'socket_timeout': 30,
         }
 
         if proxy:
