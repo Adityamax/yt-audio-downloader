@@ -55,17 +55,23 @@ def index():
         ydl_opts = {
             'outtmpl': output_template,
             'format': 'bestaudio/best',
+
+            # Limit max file size to 50 MB to prevent excessive RAM use
+            'max_filesize': 50 * 1024 * 1024,
+
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             }],
+
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
-            'retries': 10,
-            'fragment_retries': 10,
-            'socket_timeout': 30,
+            'retries': 15,
+            'fragment_retries': 15,
+            'socket_timeout': 60,
+            'http_chunk_size': 10485760,  # 10 MB chunks
         }
 
         if proxy:
@@ -80,6 +86,7 @@ def index():
             Timer(60, cleanup_dir, args=[temp_dir]).start()
 
             return send_file(filename, as_attachment=True)
+
         except Exception as e:
             cleanup_dir(temp_dir)
             return render_template_string(HTML_FORM, error=str(e), proxies=PROXIES)
