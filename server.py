@@ -7,16 +7,16 @@ from threading import Timer
 from pathlib import Path
 from flask import (
     Flask, request, redirect, url_for, render_template_string,
-    send_file, abort, jsonify
+    send_file, abort
 )
 import yt_dlp
 import base64
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
-# ---- CONFIG ----
-DOWNLOAD_CLEANUP_SECONDS = 60        # remove temp dir after this many seconds once download completes
-JOBS = {}  # job_id -> dict(status, temp_dir, filename, error, progress)
+DOWNLOAD_CLEANUP_SECONDS = 60  # Delay before cleaning temp files
+
 PROXIES = [
     "",  # no proxy
     "socks5://5.135.191.18:9100",
@@ -67,23 +67,39 @@ HTML_STATUS = """
   <p style="color:red">Error: {{ job.error }}</p>
 {% endif %}
 {% if job.filename %}
-  <p>Ready: <a href="{{ url_for('download', job_id=job_id) }}">Download file</a></p>
+  <p>Ready: <a id="download-link" href="{{ url_for('download', job_id=job_id) }}">Download file</a></p>
+  <script>
+    window.onload = function() {
+      const link = document.getElementById('download-link');
+      if (link) {
+        // Trigger the download
+        window.location.href = link.href;
+        // After delay, redirect back to main page
+        setTimeout(() => {
+          window.location.href = "{{ url_for('index') }}";
+        }, 3000);
+      }
+    };
+  </script>
 {% else %}
   <p>If the job is still running, reload this page. (This page uses GET only so refreshing is safe.)</p>
 {% endif %}
 """
 
-# ---- Helpers ----
+JOBS = {}  # job_id -> dict(status, temp_dir, filename, error, progress, tmp_cookies)
+
+
 def cleanup_dir(path):
     try:
         shutil.rmtree(path)
     except Exception:
         pass
 
+
 def schedule_cleanup(temp_dir, delay=DOWNLOAD_CLEANUP_SECONDS):
     Timer(delay, cleanup_dir, args=[temp_dir]).start()
 
-# progress hook for yt-dlp to update JOBS
+
 def make_progress_hook(job_id):
     def progress(d):
         job = JOBS.get(job_id)
@@ -91,7 +107,6 @@ def make_progress_hook(job_id):
             return
         status = d.get('status')
         if status == 'downloading':
-            # human readable progress (if available)
             downloaded_bytes = d.get('downloaded_bytes')
             total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate')
             if downloaded_bytes and total_bytes:
@@ -105,13 +120,12 @@ def make_progress_hook(job_id):
             job['progress'] = str(d)
     return progress
 
+
 def run_download(job_id, url, proxy, cookies_file_path):
-    """Background download worker."""
     job = JOBS[job_id]
     temp_dir = job['temp_dir']
     out_template = os.path.join(temp_dir, "%(title)s.%(ext)s")
 
-    # build ydl options
     ydl_opts = {
         'outtmpl': out_template,
         'format': 'bestaudio/best',
@@ -140,12 +154,9 @@ def run_download(job_id, url, proxy, cookies_file_path):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             job['status'] = 'downloading'
             info = ydl.extract_info(url, download=True)
-            # prepare filename, convert to .mp3 name
             filename = ydl.prepare_filename(info)
             final_mp3 = os.path.splitext(filename)[0] + ".mp3"
             if not os.path.exists(final_mp3):
-                # sometimes yt-dlp puts extension directly or in different step
-                # search for first file in temp_dir
                 files = list(Path(temp_dir).glob("*"))
                 if files:
                     final_mp3 = str(files[0])
@@ -156,16 +167,14 @@ def run_download(job_id, url, proxy, cookies_file_path):
         job['status'] = 'error'
         job['error'] = str(e)
     finally:
-        # remove cookies file if it was a temporary one (we tagged it in job)
         if job.get('tmp_cookies') and os.path.exists(job['tmp_cookies']):
             try:
                 os.remove(job['tmp_cookies'])
             except Exception:
                 pass
-        # schedule cleanup of temp_dir after DOWNLOAD_CLEANUP_SECONDS
         schedule_cleanup(temp_dir, delay=DOWNLOAD_CLEANUP_SECONDS)
 
-# ---- Routes ----
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -175,7 +184,6 @@ def index():
         if not url:
             return render_template_string(HTML_INDEX, error="Please enter a YouTube URL", proxies=PROXIES)
 
-        # prepare job
         job_id = str(uuid.uuid4())
         temp_dir = tempfile.mkdtemp(prefix="yt_dl_")
         JOBS[job_id] = {
@@ -187,9 +195,7 @@ def index():
             'tmp_cookies': None,
         }
 
-        # cookies handling: file upload OR env YT_COOKIES_B64
         cookies_file_path = None
-        # 1) file upload
         uploaded = request.files.get("cookies_file")
         if uploaded and uploaded.filename:
             cookies_path = os.path.join(temp_dir, "cookies.txt")
@@ -197,7 +203,6 @@ def index():
             cookies_file_path = cookies_path
             JOBS[job_id]['tmp_cookies'] = cookies_path
 
-        # 2) env base64
         if not cookies_file_path:
             cookies_b64 = os.getenv("YT_COOKIES_B64")
             if cookies_b64:
@@ -209,19 +214,16 @@ def index():
                     cookies_file_path = cookies_path
                     JOBS[job_id]['tmp_cookies'] = cookies_path
                 except Exception as e:
-                    # bad env - note it but continue (yt-dlp can still try without cookies)
                     JOBS[job_id]['error'] = f"Bad YT_COOKIES_B64 env (ignored): {e}"
 
-        # start background thread to download
         JOBS[job_id]['status'] = 'starting'
         worker = threading.Thread(target=run_download, args=(job_id, url, proxy, cookies_file_path), daemon=True)
         worker.start()
 
-        # redirect to status page (POST-Redirect-GET)
         return redirect(url_for('status', job_id=job_id))
 
-    # GET
     return render_template_string(HTML_INDEX, proxies=PROXIES)
+
 
 @app.route("/status/<job_id>", methods=["GET"])
 def status(job_id):
@@ -229,6 +231,9 @@ def status(job_id):
     if not job:
         abort(404)
     return render_template_string(HTML_STATUS, job=job, job_id=job_id)
+
+
+from flask import after_this_request
 
 @app.route("/download/<job_id>", methods=["GET"])
 def download(job_id):
@@ -242,38 +247,16 @@ def download(job_id):
     if not os.path.exists(filepath):
         return render_template_string(HTML_STATUS, job=job, job_id=job_id, error="File missing on disk")
 
-    # Serve file as attachment, then schedule cleanup
-    # Note: schedule cleanup of the whole temp_dir (in case multiple files).
     temp_dir = job['temp_dir']
-    # remove job entry so subsequent visits don't attempt to serve same file
-    # but keep filename for the send_file call
-    JOBS.pop(job_id, None)
 
-    try:
-        # schedule a final cleanup in case send_file doesn't remove
+    @after_this_request
+    def cleanup(response):
         schedule_cleanup(temp_dir, delay=DOWNLOAD_CLEANUP_SECONDS)
-        return send_file(filepath, as_attachment=True)
-    except Exception as e:
-        # if send_file fails, re-insert job so user can try again
-        JOBS[job_id] = job
-        job['status'] = 'error'
-        job['error'] = str(e)
-        return render_template_string(HTML_STATUS, job=job, job_id=job_id)
+        JOBS.pop(job_id, None)
+        return response
 
-@app.route("/api/status/<job_id>", methods=["GET"])
-def api_status(job_id):
-    """JSON status for polling from JS if desired."""
-    job = JOBS.get(job_id)
-    if not job:
-        return jsonify({"error": "not found"}), 404
-    return jsonify({
-        "status": job['status'],
-        "progress": job.get('progress'),
-        "filename": bool(job.get('filename')),
-        "error": job.get('error'),
-    })
+    return send_file(filepath, as_attachment=True)
 
-# ---- Run ----
+
 if __name__ == "__main__":
-    # For production, run behind a real WSGI server (gunicorn/uvicorn) and set proper host/port.
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000)
