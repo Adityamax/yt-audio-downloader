@@ -7,7 +7,7 @@ from threading import Timer
 from pathlib import Path
 from flask import (
     Flask, request, redirect, url_for, render_template_string,
-    send_file, abort
+    send_file, abort, after_this_request
 )
 import yt_dlp
 import base64
@@ -234,8 +234,6 @@ def status(job_id):
         abort(404)
     return render_template_string(HTML_STATUS, job=job, job_id=job_id)
 
-
-from flask import after_this_request
 
 @app.route("/download/<job_id>", methods=["GET"])
 def download(job_id):
