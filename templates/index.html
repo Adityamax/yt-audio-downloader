@@ -1,21 +1,285 @@
-<!DOCTYPE html>
+HTML_SINGLE_PAGE = """
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <title>YouTube Downloader</title>
+  <meta charset="UTF-8" />
+  <title>YouTube Audio Downloader</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #eee;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      background: #121212;
+      padding: 30px 40px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px #3a3a3a;
+      max-width: 480px;
+      width: 100%;
+      color: #eee;
+    }
+    h1 {
+      margin-top: 0;
+      text-align: center;
+      font-weight: 700;
+      color: #4caf50;
+      margin-bottom: 20px;
+    }
+    form > label {
+      display: block;
+      margin-top: 20px;
+      font-weight: 600;
+      color: #ccc;
+    }
+    input[type="url"],
+    select,
+    input[type="file"] {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 8px;
+      border: 1.8px solid #444;
+      border-radius: 6px;
+      font-size: 15px;
+      background: #222;
+      color: #eee;
+      transition: border-color 0.3s ease;
+    }
+    input[type="url"]:focus,
+    select:focus,
+    input[type="file"]:focus {
+      border-color: #4caf50;
+      outline: none;
+    }
+    input[type="submit"] {
+      margin-top: 30px;
+      background-color: #4caf50;
+      border: none;
+      color: white;
+      font-size: 18px;
+      font-weight: 600;
+      padding: 12px 0;
+      width: 100%;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.25s ease;
+    }
+    input[type="submit"]:hover {
+      background-color: #388e3c;
+    }
+    small {
+      color: #888;
+      font-size: 13px;
+      margin-top: 6px;
+      display: block;
+    }
+    .message {
+      margin-top: 20px;
+      color: #2d862d;
+      font-weight: 600;
+      text-align: center;
+    }
+    .error {
+      margin-top: 20px;
+      color: #e53935;
+      font-weight: 600;
+      text-align: center;
+    }
+    .progress-container {
+      margin-top: 30px;
+      background: #222;
+      border-radius: 8px;
+      padding: 15px 20px;
+    }
+    .progress-label {
+      font-weight: 600;
+      color: #ccc;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .progress-bar-bg {
+      width: 100%;
+      height: 14px;
+      background: #333;
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 14px;
+      background: linear-gradient(90deg, #4caf50, #81c784);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+    .download-button {
+      margin-top: 25px;
+      display: none;
+      text-align: center;
+    }
+    .download-button a {
+      background-color: #4caf50;
+      color: white;
+      text-decoration: none;
+      padding: 12px 30px;
+      border-radius: 30px;
+      font-weight: 700;
+      font-size: 18px;
+      display: inline-block;
+      transition: background-color 0.25s ease;
+    }
+    .download-button a:hover {
+      background-color: #388e3c;
+    }
+  </style>
 </head>
 <body>
-    <h1>Download YouTube Video or Audio</h1>
-    <form method="POST" action="/">
-        <input type="text" name="url" placeholder="Enter YouTube URL" style="width:300px;" required />
-        <select name="format">
-            <option value="mp3">MP3 (Audio)</option>
-            <option value="mp4">MP4 (Video)</option>
-        </select>
-        <button type="submit">Download</button>
+  <div class="container">
+    <h1>YouTube Audio Downloader</h1>
+    <form id="downloadForm">
+      <label for="url">YouTube URL:</label>
+      <input type="url" id="url" name="url" placeholder="Enter YouTube video URL" required>
+
+      <label for="proxy">Proxy (optional):</label>
+      <select id="proxy" name="proxy">
+        <option value="" selected>No Proxy</option>
+        <option value="socks5://5.135.191.18:9100">socks5://5.135.191.18:9100</option>
+        <option value="socks5://139.170.229.78:7080">socks5://139.170.229.78:7080</option>
+        <option value="socks5://179.43.182.73:1080">socks5://179.43.182.73:1080</option>
+        <option value="socks5://192.241.232.61:56527">socks5://192.241.232.61:56527</option>
+        <option value="socks5://87.238.192.63:39272">socks5://87.238.192.63:39272</option>
+      </select>
+
+      <label for="cookies_file">Upload cookies.txt (optional):</label>
+      <input type="file" id="cookies_file" name="cookies_file" accept=".txt">
+      <small>Or set YT_COOKIES_B64 environment variable to base64(cookies.txt)</small>
+
+      <input type="submit" value="Start Download">
     </form>
-    {% if error %}
-    <p style="color:red;">Error: {{ error }}</p>
-    {% endif %}
+
+    <div class="progress-container" id="progressContainer" style="display:none;">
+      <div class="progress-label">
+        <span id="fileName">Downloading your file...</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div class="progress-label" style="justify-content:flex-end; font-size: 12px; color: #aaa;">
+        <span id="progressDetails"></span>
+      </div>
+    </div>
+
+    <div class="download-button" id="downloadButton">
+      <a id="downloadLink" href="#" download>Download File</a>
+    </div>
+
+    <div class="message" id="message"></div>
+    <div class="error" id="error"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('downloadForm');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressDetails = document.getElementById('progressDetails');
+    const fileNameEl = document.getElementById('fileName');
+    const downloadButton = document.getElementById('downloadButton');
+    const downloadLink = document.getElementById('downloadLink');
+    const message = document.getElementById('message');
+    const error = document.getElementById('error');
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      message.textContent = '';
+      error.textContent = '';
+      downloadButton.style.display = 'none';
+      progressBar.style.width = '0%';
+      progressPercent.textContent = '0%';
+      progressDetails.textContent = '';
+      fileNameEl.textContent = 'Downloading your file...';
+      progressContainer.style.display = 'block';
+
+      // Prepare form data for POST
+      const formData = new FormData(form);
+
+      try {
+        // Send form data to /start_download endpoint to initiate job and get job_id
+        const response = await fetch('/start_download', {
+          method: 'POST',
+          body: formData
+        });
+        if (!response.ok) {
+          throw new Error('Failed to start download');
+        }
+        const data = await response.json();
+        const jobId = data.job_id;
+
+        // Poll job status every 2 seconds
+        const pollInterval = 2000;
+        let pollTimer;
+
+        const pollStatus = async () => {
+          try {
+            const statusRes = await fetch('/job_status/' + jobId);
+            if (!statusRes.ok) {
+              throw new Error('Failed to get job status');
+            }
+            const statusData = await statusRes.json();
+
+            if (statusData.status === 'error') {
+              progressContainer.style.display = 'none';
+              error.textContent = statusData.error || 'Error during download';
+              clearInterval(pollTimer);
+              return;
+            }
+
+            // Update progress bar and text
+            let pct = 0;
+            if (statusData.progress) {
+              // Expecting progress in format like "56.4%" or "56%"
+              let match = statusData.progress.match(/(\d+(\.\d+)?)/);
+              if (match) {
+                pct = parseFloat(match[1]);
+              }
+            }
+            progressBar.style.width = pct + '%';
+            progressPercent.textContent = pct.toFixed(1) + '%';
+
+            if (statusData.filename) {
+              fileNameEl.textContent = statusData.filename.split('/').pop();
+              progressPercent.textContent = '100%';
+              progressBar.style.width = '100%';
+              progressDetails.textContent = 'Download ready';
+              downloadLink.href = '/download/' + jobId;
+              downloadButton.style.display = 'block';
+              clearInterval(pollTimer);
+            } else {
+              progressDetails.textContent = statusData.progress || '';
+              fileNameEl.textContent = 'Downloading your file...';
+              downloadButton.style.display = 'none';
+            }
+          } catch (err) {
+            error.textContent = 'Error fetching status';
+            clearInterval(pollTimer);
+          }
+        };
+
+        pollTimer = setInterval(pollStatus, pollInterval);
+        pollStatus();
+
+      } catch (err) {
+        progressContainer.style.display = 'none';
+        error.textContent = err.message || 'Unexpected error';
+      }
+    });
+  </script>
 </body>
 </html>
+"""
