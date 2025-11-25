@@ -70,14 +70,16 @@ HTML_STATUS = """
   <p>Ready: <a id="download-link" href="{{ url_for('download', job_id=job_id) }}">Download file</a></p>
   <script>
     window.onload = function() {
-      const link = document.getElementById('download-link');
-      if (link) {
-        // Trigger the download
-        window.location.href = link.href;
-        // After delay, redirect back to main page
-        setTimeout(() => {
-          window.location.href = "{{ url_for('index') }}";
-        }, 3000);
+      if (!sessionStorage.getItem('downloadTriggered')) {
+        const link = document.getElementById('download-link');
+        if (link) {
+          sessionStorage.setItem('downloadTriggered', 'true');
+          window.location.href = link.href;
+          setTimeout(() => {
+            sessionStorage.removeItem('downloadTriggered');
+            window.location.href = "{{ url_for('index') }}";
+          }, 3000);
+        }
       }
     };
   </script>
