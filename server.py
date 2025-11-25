@@ -28,65 +28,216 @@ PROXIES = [
 
 HTML_INDEX = """
 <!doctype html>
-<title>YT Audio Downloader (POST→Redirect→GET)</title>
-<h2>YT Audio Downloader</h2>
-<form method="post" enctype="multipart/form-data">
-  <label>YouTube URL:</label><br>
-  <input type="url" name="url" size="60" required><br><br>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>YouTube Audio Downloader</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f7f8;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      background: #fff;
+      padding: 30px 40px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-width: 480px;
+      width: 100%;
+    }
+    h1 {
+      margin-top: 0;
+      color: #222;
+      text-align: center;
+      font-weight: 700;
+    }
+    label {
+      display: block;
+      margin-top: 20px;
+      font-weight: 600;
+      color: #555;
+    }
+    input[type="url"],
+    select,
+    input[type="file"] {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 8px;
+      border: 1.8px solid #ccc;
+      border-radius: 6px;
+      font-size: 15px;
+      transition: border-color 0.3s ease;
+    }
+    input[type="url"]:focus,
+    select:focus,
+    input[type="file"]:focus {
+      border-color: #4a90e2;
+      outline: none;
+    }
+    input[type="submit"] {
+      margin-top: 30px;
+      background-color: #4a90e2;
+      border: none;
+      color: white;
+      font-size: 18px;
+      font-weight: 600;
+      padding: 12px 0;
+      width: 100%;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.25s ease;
+    }
+    input[type="submit"]:hover {
+      background-color: #357abd;
+    }
+    small {
+      color: #888;
+      font-size: 13px;
+      margin-top: 6px;
+      display: block;
+    }
+    .message {
+      margin-top: 20px;
+      color: #2d862d;
+      font-weight: 600;
+      text-align: center;
+    }
+    .error {
+      margin-top: 20px;
+      color: #d9534f;
+      font-weight: 600;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>YouTube Audio Downloader</h1>
+    <form method="post" enctype="multipart/form-data">
+      <label for="url">YouTube URL:</label>
+      <input type="url" id="url" name="url" placeholder="Enter YouTube video URL" required>
 
-  <label>Proxy (optional):</label><br>
-  <select name="proxy">
-    {% for p in proxies %}
-      <option value="{{p}}" {% if p == '' %}selected{% endif %}>{{ 'No Proxy' if p=='' else p }}</option>
-    {% endfor %}
-  </select><br><br>
+      <label for="proxy">Proxy (optional):</label>
+      <select id="proxy" name="proxy">
+        {% for p in proxies %}
+          <option value="{{p}}" {% if p == '' %}selected{% endif %}>{{ 'No Proxy' if p=='' else p }}</option>
+        {% endfor %}
+      </select>
 
-  <label>Upload cookies.txt (optional):</label><br>
-  <input type="file" name="cookies_file" accept=".txt"><br>
-  <small>Or set YT_COOKIES_B64 environment variable to base64(cookies.txt)</small><br><br>
+      <label for="cookies_file">Upload cookies.txt (optional):</label>
+      <input type="file" id="cookies_file" name="cookies_file" accept=".txt">
+      <small>Or set YT_COOKIES_B64 environment variable to base64(cookies.txt)</small>
 
-  <input type="submit" value="Start Download">
-</form>
-{% if message %}
-  <p style="color:green">{{ message }}</p>
-{% endif %}
-{% if error %}
-  <p style="color:red">{{ error }}</p>
-{% endif %}
+      <input type="submit" value="Start Download">
+    </form>
+
+    {% if message %}
+      <div class="message">{{ message }}</div>
+    {% endif %}
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+  </div>
+</body>
+</html>
 """
 
 HTML_STATUS = """
 <!doctype html>
-<title>Job status</title>
-<h2>Job {{ job_id }}</h2>
-<p>Status: <strong>{{ job.status }}</strong></p>
-{% if job.progress is not none %}
-  <p>Progress: {{ job.progress }}</p>
-{% endif %}
-{% if job.error %}
-  <p style="color:red">Error: {{ job.error }}</p>
-{% endif %}
-{% if job.filename %}
-  <p>Ready: <a id="download-link" href="{{ url_for('download', job_id=job_id) }}">Download file</a></p>
-  <script>
-    window.onload = function() {
-      if (!sessionStorage.getItem('downloadTriggered')) {
-        const link = document.getElementById('download-link');
-        if (link) {
-          sessionStorage.setItem('downloadTriggered', 'true');
-          window.location.href = link.href;
-          setTimeout(() => {
-            sessionStorage.removeItem('downloadTriggered');
-            window.location.href = "{{ url_for('index') }}";
-          }, 3000);
-        }
-      }
-    };
-  </script>
-{% else %}
-  <p>If the job is still running, reload this page. (This page uses GET only so refreshing is safe.)</p>
-{% endif %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Download Status</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f7f8;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      background: #fff;
+      padding: 30px 40px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      margin-top: 0;
+      color: #222;
+      font-weight: 700;
+    }
+    p {
+      font-size: 16px;
+      color: #444;
+      margin: 12px 0;
+    }
+    a.download-link {
+      display: inline-block;
+      margin-top: 20px;
+      background: #28a745;
+      color: white;
+      text-decoration: none;
+      padding: 12px 24px;
+      font-weight: 600;
+      border-radius: 6px;
+      transition: background-color 0.25s ease;
+    }
+    a.download-link:hover {
+      background: #1e7e34;
+    }
+    .error {
+      color: #d9534f;
+      font-weight: 700;
+      margin-top: 20px;
+    }
+    a.back-link {
+      display: inline-block;
+      margin-top: 30px;
+      color: #4a90e2;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a.back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Job {{ job_id }}</h1>
+    <p>Status: <strong>{{ job.status }}</strong></p>
+    {% if job.progress is not none %}
+      <p>Progress: {{ job.progress }}</p>
+    {% endif %}
+    {% if job.error %}
+      <p class="error">Error: {{ job.error }}</p>
+    {% endif %}
+    {% if job.filename %}
+      <a class="download-link" href="{{ url_for('download', job_id=job_id) }}">Download File</a>
+    {% else %}
+      <p>If the job is still running, please reload this page.</p>
+    {% endif %}
+    <br>
+    <a class="back-link" href="{{ url_for('index') }}">← Back to Home</a>
+  </div>
+</body>
+</html>
 """
+
+
 
 JOBS = {}  # job_id -> dict(status, temp_dir, filename, error, progress, tmp_cookies)
 
